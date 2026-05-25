@@ -39,18 +39,36 @@ async function checkRate(
   }
 }
 
-// ── Insert prompt with a pre-generated id (no SELECT needed) ─────────
-async function insertLog(id: string, ip: string, prompt: string) {
-  if (!SUPABASE_URL || !SUPABASE_KEY) return;
+// ── Supabase fetch with 5s timeout ────────────────────────────────────
+async function supabaseFetch(
+  path: string,
+  options: RequestInit,
+): Promise<Response> {
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), 5000);
   try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/query_logs`, {
-      method: "POST",
+    return await fetch(`${SUPABASE_URL}${path}`, {
+      ...options,
+      signal: abort.signal,
       headers: {
         apikey: SUPABASE_KEY,
         Authorization: `Bearer ${SUPABASE_KEY}`,
         "Content-Type": "application/json",
-        Prefer: "return=minimal",
+        ...((options.headers as Record<string, string>) ?? {}),
       },
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// ── Insert prompt row ─────────────────────────────────────────────────
+async function insertLog(id: string, ip: string, prompt: string) {
+  if (!SUPABASE_URL || !SUPABASE_KEY) return;
+  try {
+    const res = await supabaseFetch("/rest/v1/query_logs", {
+      method: "POST",
+      headers: { Prefer: "return=minimal" },
       body: JSON.stringify({
         id,
         ip,
@@ -66,21 +84,17 @@ async function insertLog(id: string, ip: string, prompt: string) {
   }
 }
 
-// ── Patch response + latency after stream ends ────────────────────────
+// ── Update row with response ──────────────────────────────────────────
 async function updateLog(id: string, response: string, latency_ms: number) {
   if (!SUPABASE_URL || !SUPABASE_KEY || !id) return;
   try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/query_logs?id=eq.${id}`, {
+    const res = await supabaseFetch(`/rest/v1/query_logs?id=eq.${id}`, {
       method: "PATCH",
-      headers: {
-        apikey: SUPABASE_KEY,
-        Authorization: `Bearer ${SUPABASE_KEY}`,
-        "Content-Type": "application/json",
-        Prefer: "return=minimal",
-      },
+      headers: { Prefer: "return=minimal" },
       body: JSON.stringify({ response: response.slice(0, 300), latency_ms }),
     });
     console.log("[updateLog] status:", res.status);
+    if (!res.ok) console.error("[updateLog] body:", await res.text());
   } catch (e) {
     console.error("[updateLog] failed:", e);
   }
@@ -103,7 +117,6 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const prompt = body.messages?.at(-1)?.content?.slice(0, 500) || "";
 
-  // Generate UUID here — avoids needing SELECT permission on Supabase
   const logId = crypto.randomUUID();
   await insertLog(logId, ip, prompt);
 
@@ -144,13 +157,13 @@ export async function POST(req: NextRequest) {
 
           for (const line of chunk.split("\n")) {
             if (!line.startsWith("data: ")) continue;
-            const data = line.slice(6).trim();
-            if (data === "[DONE]") {
+            const raw = line.slice(6).trim();
+            if (raw === "[DONE]") {
               sseComplete = true;
               continue;
             }
             try {
-              const parsed = JSON.parse(data);
+              const parsed = JSON.parse(raw);
               collected += parsed.choices?.[0]?.delta?.content ?? "";
             } catch {
               /* skip */
@@ -158,12 +171,11 @@ export async function POST(req: NextRequest) {
           }
 
           controller.enqueue(encoder.encode(chunk));
-
-          // Break on [DONE] — HF Space never closes TCP so we must do this
-          if (sseComplete) break;
+          if (sseComplete) break; // HF Space never closes TCP — must break manually
         }
       } finally {
         controller.close();
+        // 5s timeout on updateLog prevents any further hanging
         await updateLog(logId, collected, Date.now() - start);
       }
     },
