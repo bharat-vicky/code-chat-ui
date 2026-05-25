@@ -33,10 +33,10 @@ interface Convo {
 }
 
 const EXAMPLE_PROMPTS = [
-  "Write a Python function using the Sieve of Eratosthenes",
-  "Explain the difference between list and tuple with examples",
-  "Implement binary search with thorough inline comments",
-  "Create a decorator that measures function execution time",
+  "Write a Python function to calculate the sum of all numbers in a list.",
+  "Write a Python function to check if a string is a palindrome.",
+  "Write a Python function to find the largest number in a list.",
+  "Write a Python function to count how many times an element appears in a list.",
 ];
 
 /* ── Code block ─────────────────────────────────────────────────────────── */
