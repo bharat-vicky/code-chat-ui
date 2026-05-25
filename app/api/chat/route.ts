@@ -1,7 +1,5 @@
 import { NextRequest } from "next/server";
 
-export const maxDuration = 60; // cap Vercel function at 60s
-
 const HF_SPACE_URL =
   process.env.HF_SPACE_URL ||
   "https://rovdetection-code-1b-chat-space.hf.space";
