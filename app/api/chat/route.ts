@@ -1,5 +1,4 @@
 import { NextRequest } from "next/server";
-import { waitUntil } from "@vercel/functions";
 
 const HF_SPACE_URL =
   process.env.HF_SPACE_URL ||
@@ -42,34 +41,35 @@ async function checkRate(
 async function logQuery(row: {
   ip: string;
   prompt: string;
-  response: string;
-  tokens_used: number;
   latency_ms: number;
 }) {
   if (!SUPABASE_URL || !SUPABASE_KEY) {
-    console.log("[logQuery] Supabase env vars missing, skipping log");
+    console.log(
+      "[logQuery] missing env vars — SUPABASE_URL set:",
+      !!SUPABASE_URL,
+      "KEY set:",
+      !!SUPABASE_KEY,
+    );
     return;
   }
-  // 8-second timeout so it never hangs
-  const abort = new AbortController();
-  const timer = setTimeout(() => abort.abort(), 8000);
   try {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/query_logs`, {
       method: "POST",
-      signal: abort.signal,
       headers: {
         apikey: SUPABASE_KEY,
         Authorization: `Bearer ${SUPABASE_KEY}`,
         "Content-Type": "application/json",
         Prefer: "return=minimal",
       },
-      body: JSON.stringify(row),
+      body: JSON.stringify({ ...row, response: "", tokens_used: 0 }),
     });
-    console.log("[logQuery] Supabase response status:", res.status);
+    console.log("[logQuery] status:", res.status);
+    if (!res.ok) {
+      const txt = await res.text();
+      console.error("[logQuery] error body:", txt);
+    }
   } catch (e) {
-    console.error("[logQuery] failed:", e);
-  } finally {
-    clearTimeout(timer);
+    console.error("[logQuery] fetch threw:", e);
   }
 }
 
@@ -88,6 +88,9 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json();
   const prompt = body.messages?.at(-1)?.content?.slice(0, 500) || "";
+
+  // Log prompt now — fast insert before streaming starts
+  await logQuery({ ip, prompt, latency_ms: Date.now() - start });
 
   let upstream: Response;
   try {
@@ -108,53 +111,7 @@ export async function POST(req: NextRequest) {
     return new Response(text, { status: upstream.status });
   }
 
-  const encoder = new TextEncoder();
-  const decoder = new TextDecoder();
-
-  // logData is mutated inside the stream, then logged after via waitUntil
-  const logData = { ip, prompt, response: "", tokens_used: 0, latency_ms: 0 };
-
-  // streamDone resolves when the stream finishes — waitUntil waits for it
-  let streamResolve!: () => void;
-  const streamDone = new Promise<void>((r) => {
-    streamResolve = r;
-  });
-
-  waitUntil(streamDone.then(() => logQuery(logData)));
-
-  const stream = new ReadableStream({
-    async start(controller) {
-      const reader = upstream.body!.getReader();
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          const chunk = decoder.decode(value, { stream: true });
-
-          for (const line of chunk.split("\n")) {
-            if (!line.startsWith("data: ")) continue;
-            const data = line.slice(6).trim();
-            if (data === "[DONE]") continue;
-            try {
-              const parsed = JSON.parse(data);
-              logData.response += parsed.choices?.[0]?.delta?.content ?? "";
-            } catch {
-              /* skip */
-            }
-          }
-
-          controller.enqueue(encoder.encode(chunk));
-        }
-      } finally {
-        logData.response = logData.response.slice(0, 300);
-        logData.latency_ms = Date.now() - start;
-        controller.close();
-        streamResolve(); // triggers waitUntil → logQuery
-      }
-    },
-  });
-
-  return new Response(stream, {
+  return new Response(upstream.body, {
     headers: {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
