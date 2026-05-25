@@ -6,14 +6,14 @@ const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || "";
 const SUPABASE_URL  = process.env.SUPABASE_URL  || "";
 const SUPABASE_KEY  = process.env.SUPABASE_ANON_KEY || "";
 
-const RATE_LIMIT  = 50;   // requests per IP per hour
-const WINDOW_SEC  = 3600;
+const RATE_LIMIT = 50;
+const WINDOW_SEC = 3600;
 
 // ── Rate limit via Upstash ────────────────────────────────────────────
 async function checkRate(ip: string): Promise<{ allowed: boolean; remaining: number }> {
   if (!UPSTASH_URL) return { allowed: true, remaining: 50 };
   try {
-    const res  = await fetch(`${UPSTASH_URL}/pipeline`, {
+    const res   = await fetch(`${UPSTASH_URL}/pipeline`, {
       method:  "POST",
       headers: { Authorization: `Bearer ${UPSTASH_TOKEN}`, "Content-Type": "application/json" },
       body:    JSON.stringify([["INCR", `rl:${ip}`], ["EXPIRE", `rl:${ip}`, WINDOW_SEC]]),
@@ -26,21 +26,25 @@ async function checkRate(ip: string): Promise<{ allowed: boolean; remaining: num
   }
 }
 
-// ── Log to Supabase (fire-and-forget) ────────────────────────────────
-function logQuery(row: {
+// ── Log to Supabase (awaited) ─────────────────────────────────────────
+async function logQuery(row: {
   ip: string; prompt: string; response: string; tokens_used: number; latency_ms: number;
 }) {
-  if (!SUPABASE_URL) return;
-  fetch(`${SUPABASE_URL}/rest/v1/query_logs`, {
-    method:  "POST",
-    headers: {
-      apikey:         SUPABASE_KEY,
-      Authorization:  `Bearer ${SUPABASE_KEY}`,
-      "Content-Type": "application/json",
-      Prefer:         "return=minimal",
-    },
-    body: JSON.stringify(row),
-  }).catch(() => {});
+  if (!SUPABASE_URL || !SUPABASE_KEY) return;
+  try {
+    await fetch(`${SUPABASE_URL}/rest/v1/query_logs`, {
+      method:  "POST",
+      headers: {
+        apikey:         SUPABASE_KEY,
+        Authorization:  `Bearer ${SUPABASE_KEY}`,
+        "Content-Type": "application/json",
+        Prefer:         "return=minimal",
+      },
+      body: JSON.stringify(row),
+    });
+  } catch (e) {
+    console.error("[logQuery] Supabase insert failed:", e);
+  }
 }
 
 // ── Main handler ──────────────────────────────────────────────────────
@@ -48,7 +52,7 @@ export async function POST(req: NextRequest) {
   const ip    = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
   const start = Date.now();
 
-  // Rate limit check
+  // Rate limit
   const { allowed, remaining } = await checkRate(ip);
   if (!allowed) {
     return new Response(
@@ -57,7 +61,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const body = await req.json();
+  const body   = await req.json();
   const prompt = body.messages?.at(-1)?.content?.slice(0, 500) || "";
 
   let upstream: Response;
@@ -79,46 +83,34 @@ export async function POST(req: NextRequest) {
     return new Response(text, { status: upstream.status });
   }
 
-  // Collect response for logging while streaming to browser
-  let collected = "";
-  const encoder  = new TextEncoder();
-  const decoder  = new TextDecoder();
+  // Buffer full response, log, then stream back
+  const rawText   = await upstream.text();
+  const encoder   = new TextEncoder();
+  let   collected = "";
+
+  for (const line of rawText.split("\n")) {
+    if (!line.startsWith("data: ")) continue;
+    const data = line.slice(6).trim();
+    if (data === "[DONE]") continue;
+    try {
+      const parsed = JSON.parse(data);
+      collected += parsed.choices?.[0]?.delta?.content ?? "";
+    } catch { /* skip */ }
+  }
+
+  // Await log before returning so Vercel doesn't kill it
+  await logQuery({
+    ip,
+    prompt,
+    response:    collected.slice(0, 300),
+    tokens_used: 0,
+    latency_ms:  Date.now() - start,
+  });
 
   const stream = new ReadableStream({
-    async start(controller) {
-      const reader = upstream.body!.getReader();
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          const chunk = decoder.decode(value, { stream: true });
-
-          // Collect assistant text for logging
-          for (const line of chunk.split("\n")) {
-            if (!line.startsWith("data: ")) continue;
-            const data = line.slice(6).trim();
-            if (data === "[DONE]") continue;
-            try {
-              const parsed = JSON.parse(data);
-              collected += parsed.choices?.[0]?.delta?.content ?? "";
-            } catch { /* skip */ }
-          }
-
-          controller.enqueue(encoder.encode(chunk));
-        }
-      } finally {
-        controller.close();
-
-        // Log after stream ends
-        logQuery({
-          ip,
-          prompt,
-          response:    collected.slice(0, 300),
-          tokens_used: 0,          // not available in streaming mode
-          latency_ms:  Date.now() - start,
-        });
-      }
+    start(controller) {
+      controller.enqueue(encoder.encode(rawText));
+      controller.close();
     },
   });
 
