@@ -2,33 +2,232 @@
 @tailwind components;
 @tailwind utilities;
 
-/* GitHub Dark syntax theme for code blocks */
-.hljs { background: #161b22; color: #e6edf3; }
-.hljs-keyword { color: #ff7b72; }
-.hljs-string { color: #a5d6ff; }
-.hljs-comment { color: #8b949e; font-style: italic; }
-.hljs-function { color: #d2a8ff; }
-.hljs-number { color: #79c0ff; }
-.hljs-built_in { color: #ffa657; }
-.hljs-title { color: #d2a8ff; }
-.hljs-variable { color: #e6edf3; }
-.hljs-operator { color: #ff7b72; }
-.hljs-type { color: #ffa657; }
-.hljs-class { color: #ffa657; }
-.hljs-attr { color: #79c0ff; }
-.hljs-params { color: #e6edf3; }
-.hljs-literal { color: #79c0ff; }
-.hljs-symbol { color: #a5d6ff; }
-.hljs-meta { color: #8b949e; }
-.hljs-tag { color: #7ee787; }
-.hljs-name { color: #7ee787; }
-.hljs-selector-class { color: #d2a8ff; }
-.hljs-selector-id { color: #79c0ff; }
+/* ── Design tokens ──────────────────────────────────────────────────────── */
+:root {
+  --base:        #04060a;
+  --surface:     #080b10;
+  --elevated:    #0c1018;
+  --overlay:     #101620;
+  --panel:       #07090f;
 
-/* Scrollbar */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
+  --border-faint:  rgba(190, 210, 228, 0.045);
+  --border-subtle: rgba(190, 210, 228, 0.08);
+  --border-mid:    rgba(190, 210, 228, 0.14);
+  --border-strong: rgba(190, 210, 228, 0.25);
 
-/* Auto-resize textarea */
+  --text-1: #dde8f0;
+  --text-2: #8ca4b8;
+  --text-3: #455a6a;
+  --text-4: #2d3d4a;
+
+  --silver-1: #516070;
+  --silver-2: #8ca4b8;
+  --silver-3: #b8ccd8;
+  --silver-4: #d8e6f0;
+  --silver-5: #edf3f8;
+
+  --font-sans:  'DM Sans', sans-serif;
+  --font-serif: 'Cormorant Garamond', Georgia, serif;
+  --font-mono:  'JetBrains Mono', 'Fira Code', monospace;
+}
+
+/* ── Base reset ─────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html { height: 100%; }
+
+body {
+  height: 100%;
+  font-family: var(--font-sans);
+  background: var(--base);
+  color: var(--text-1);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'ss01' 1, 'cv01' 1;
+}
+
+/* ── Placeholder ────────────────────────────────────────────────────────── */
+textarea::placeholder,
+input::placeholder {
+  color: var(--text-3);
+  opacity: 1;
+}
+
+/* ── Textarea auto-resize ───────────────────────────────────────────────── */
 textarea { field-sizing: content; }
+
+/* ── Scrollbar ──────────────────────────────────────────────────────────── */
+::-webkit-scrollbar        { width: 4px; height: 4px; }
+::-webkit-scrollbar-track  { background: transparent; }
+::-webkit-scrollbar-thumb  { background: rgba(140, 164, 184, 0.12); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(140, 164, 184, 0.25); }
+
+/* ── Syntax highlighting — cool obsidian steel ──────────────────────────── */
+.hljs             { background: #050810; color: #c8d8e8; }
+.hljs-keyword     { color: #7ab8d4; font-weight: 500; }
+.hljs-string      { color: #88c4a0; }
+.hljs-comment     { color: #3d5060; font-style: italic; }
+.hljs-function    { color: #a898d8; }
+.hljs-number      { color: #70c8b8; }
+.hljs-built_in    { color: #90b8d4; }
+.hljs-title       { color: #a898d8; }
+.hljs-variable    { color: #c8d8e8; }
+.hljs-operator    { color: #7ab8d4; }
+.hljs-type        { color: #90b8d4; }
+.hljs-class       { color: #90b8d4; }
+.hljs-attr        { color: #70c8b8; }
+.hljs-params      { color: #c8d8e8; }
+.hljs-literal     { color: #7ab8d4; }
+.hljs-symbol      { color: #88c4a0; }
+.hljs-meta        { color: #3d5060; }
+.hljs-tag         { color: #70c8b8; }
+.hljs-name        { color: #70c8b8; }
+.hljs-selector-class { color: #a898d8; }
+.hljs-selector-id    { color: #70c8b8; }
+
+/* ── Metallic gradient text ─────────────────────────────────────────────── */
+.metallic {
+  background: linear-gradient(
+    128deg,
+    var(--silver-5)  0%,
+    var(--silver-3) 28%,
+    var(--silver-5) 52%,
+    var(--silver-2) 76%,
+    var(--silver-4) 100%
+  );
+  background-size: 220% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: metallic-pan 8s ease-in-out infinite alternate;
+}
+
+@keyframes metallic-pan {
+  0%   { background-position: 0% 50%; }
+  100% { background-position: 100% 50%; }
+}
+
+/* ── Silver shimmer button ──────────────────────────────────────────────── */
+.silver-btn {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(145deg, #0f1820 0%, #141e2a 100%);
+  border: 1px solid var(--border-subtle);
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.silver-btn::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 30%,
+    rgba(184, 204, 216, 0.07) 50%,
+    transparent 70%
+  );
+  background-size: 250% 100%;
+  background-position: 150% 0;
+  transition: background-position 0.6s ease;
+}
+
+.silver-btn:hover::after   { background-position: -50% 0; }
+.silver-btn:hover          { border-color: var(--border-mid); background: linear-gradient(145deg, #131d29 0%, #18232f 100%); }
+
+/* ── Glow send button (active state) ───────────────────────────────────── */
+.send-active {
+  background: linear-gradient(145deg, #162030 0%, #1e2e40 100%);
+  border: 1px solid rgba(184, 204, 216, 0.28);
+  box-shadow: 0 0 18px rgba(140, 164, 184, 0.12),
+              inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  transition: all 0.2s ease;
+}
+.send-active:hover {
+  border-color: rgba(184, 204, 216, 0.4);
+  box-shadow: 0 0 26px rgba(140, 164, 184, 0.18),
+              inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+/* ── Sidebar conversations hover ────────────────────────────────────────── */
+.convo-item {
+  transition: background 0.15s ease;
+}
+.convo-item:hover { background: rgba(184, 204, 216, 0.04); }
+
+/* ── Message enter animation ────────────────────────────────────────────── */
+.msg-enter {
+  animation: msg-in 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes msg-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0)   scale(1); }
+}
+
+/* ── Welcome fade-up ────────────────────────────────────────────────────── */
+.fade-up {
+  animation: fade-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.fade-up-delay-1 { animation-delay: 0.08s; }
+.fade-up-delay-2 { animation-delay: 0.16s; }
+.fade-up-delay-3 { animation-delay: 0.24s; }
+
+/* ── Dot pulse (thinking indicator) ────────────────────────────────────── */
+@keyframes dot-beat {
+  0%, 80%, 100% { opacity: 0.18; transform: scale(0.75); }
+  40%           { opacity: 1;    transform: scale(1); }
+}
+
+.dot-1 { animation: dot-beat 1.5s ease-in-out 0.0s infinite; }
+.dot-2 { animation: dot-beat 1.5s ease-in-out 0.2s infinite; }
+.dot-3 { animation: dot-beat 1.5s ease-in-out 0.4s infinite; }
+
+/* ── Sidebar gradient top line ──────────────────────────────────────────── */
+.sidebar-topline::before {
+  content: '';
+  display: block;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(184, 204, 216, 0.12) 30%,
+    rgba(184, 204, 216, 0.22) 50%,
+    rgba(184, 204, 216, 0.12) 70%,
+    transparent 100%
+  );
+  margin-bottom: 1px;
+}
+
+/* ── Input focus glow wrapper ───────────────────────────────────────────── */
+.input-wrap {
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.input-wrap:focus-within {
+  border-color: rgba(184, 204, 216, 0.22) !important;
+  box-shadow: 0 0 0 1px rgba(184, 204, 216, 0.06),
+              0 4px 24px rgba(0, 0, 0, 0.4);
+}
+
+/* ── Example prompt card hover ──────────────────────────────────────────── */
+.prompt-card {
+  transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
+}
+.prompt-card:hover {
+  border-color: rgba(184, 204, 216, 0.18) !important;
+  background: rgba(12, 18, 26, 0.85) !important;
+  transform: translateY(-1px);
+}
+
+/* ── Divider line ───────────────────────────────────────────────────────── */
+.hairline {
+  border: none;
+  height: 1px;
+  background: var(--border-faint);
+  margin: 0;
+}
