@@ -1,0 +1,34 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* GitHub Dark syntax theme for code blocks */
+.hljs { background: #161b22; color: #e6edf3; }
+.hljs-keyword { color: #ff7b72; }
+.hljs-string { color: #a5d6ff; }
+.hljs-comment { color: #8b949e; font-style: italic; }
+.hljs-function { color: #d2a8ff; }
+.hljs-number { color: #79c0ff; }
+.hljs-built_in { color: #ffa657; }
+.hljs-title { color: #d2a8ff; }
+.hljs-variable { color: #e6edf3; }
+.hljs-operator { color: #ff7b72; }
+.hljs-type { color: #ffa657; }
+.hljs-class { color: #ffa657; }
+.hljs-attr { color: #79c0ff; }
+.hljs-params { color: #e6edf3; }
+.hljs-literal { color: #79c0ff; }
+.hljs-symbol { color: #a5d6ff; }
+.hljs-meta { color: #8b949e; }
+.hljs-tag { color: #7ee787; }
+.hljs-name { color: #7ee787; }
+.hljs-selector-class { color: #d2a8ff; }
+.hljs-selector-id { color: #79c0ff; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
+
+/* Auto-resize textarea */
+textarea { field-sizing: content; }
