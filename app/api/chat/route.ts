@@ -39,13 +39,9 @@ async function checkRate(
   }
 }
 
-// ── Insert a new log row, returns the row id ──────────────────────────
-async function insertLog(row: {
-  ip: string;
-  prompt: string;
-  latency_ms: number;
-}): Promise<string | null> {
-  if (!SUPABASE_URL || !SUPABASE_KEY) return null;
+// ── Insert prompt with a pre-generated id (no SELECT needed) ─────────
+async function insertLog(id: string, ip: string, prompt: string) {
+  if (!SUPABASE_URL || !SUPABASE_KEY) return;
   try {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/query_logs`, {
       method: "POST",
@@ -53,20 +49,24 @@ async function insertLog(row: {
         apikey: SUPABASE_KEY,
         Authorization: `Bearer ${SUPABASE_KEY}`,
         "Content-Type": "application/json",
-        Prefer: "return=representation", // get back inserted row with id
+        Prefer: "return=minimal",
       },
-      body: JSON.stringify({ ...row, response: "", tokens_used: 0 }),
+      body: JSON.stringify({
+        id,
+        ip,
+        prompt,
+        response: "",
+        tokens_used: 0,
+        latency_ms: 0,
+      }),
     });
-    const rows = await res.json();
-    console.log("[insertLog] status:", res.status, "id:", rows?.[0]?.id);
-    return rows?.[0]?.id ?? null;
+    console.log("[insertLog] status:", res.status);
   } catch (e) {
     console.error("[insertLog] failed:", e);
-    return null;
   }
 }
 
-// ── Update log row with response + final latency ──────────────────────
+// ── Patch response + latency after stream ends ────────────────────────
 async function updateLog(id: string, response: string, latency_ms: number) {
   if (!SUPABASE_URL || !SUPABASE_KEY || !id) return;
   try {
@@ -92,7 +92,6 @@ export async function POST(req: NextRequest) {
     req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
   const start = Date.now();
 
-  // Rate limit
   const { allowed, remaining } = await checkRate(ip);
   if (!allowed) {
     return new Response(
@@ -104,9 +103,9 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const prompt = body.messages?.at(-1)?.content?.slice(0, 500) || "";
 
-  // Insert prompt immediately — this is confirmed working (201)
-  // We get back the row id so we can PATCH it with the response later
-  const logId = await insertLog({ ip, prompt, latency_ms: 0 });
+  // Generate UUID here — avoids needing SELECT permission on Supabase
+  const logId = crypto.randomUUID();
+  await insertLog(logId, ip, prompt);
 
   let upstream: Response;
   try {
@@ -147,28 +146,25 @@ export async function POST(req: NextRequest) {
             if (!line.startsWith("data: ")) continue;
             const data = line.slice(6).trim();
             if (data === "[DONE]") {
-              sseComplete = true; // HF Space finished generating
+              sseComplete = true;
               continue;
             }
             try {
               const parsed = JSON.parse(data);
               collected += parsed.choices?.[0]?.delta?.content ?? "";
             } catch {
-              /* skip malformed */
+              /* skip */
             }
           }
 
           controller.enqueue(encoder.encode(chunk));
 
-          // KEY FIX: break as soon as [DONE] is received
-          // HF Space never closes TCP, so reader.read() would hang forever
+          // Break on [DONE] — HF Space never closes TCP so we must do this
           if (sseComplete) break;
         }
       } finally {
         controller.close();
-        // Function is alive here — [DONE] was received so we broke out cleanly
-        // Update the row we inserted earlier with the full response
-        await updateLog(logId ?? "", collected, Date.now() - start);
+        await updateLog(logId, collected, Date.now() - start);
       }
     },
   });
